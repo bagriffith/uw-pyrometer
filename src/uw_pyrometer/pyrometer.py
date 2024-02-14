@@ -20,8 +20,6 @@ class PyrometerSerial:
         if not 0 <= device_id < 255:
             raise ValueError('Device id must be one byte. '
                              '0xFF is reserved for broadcast.')
-        if device_id > 9:
-            logger.warning('Device id should not normally exceed 9.')
 
         self.id = device_id
         self.serial = serial.Serial(address, **self.serial_kw_args)
