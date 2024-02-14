@@ -61,7 +61,7 @@ class PyrometerSerial:
         self.send([self.CMD_SET_POT, thermopile_gain, thermistor_gain], broadcast)
         # Should I look for a response?
 
-    def get_measurement(self, convert=False, broadcast=False):
+    def get_measurement(self, broadcast=False):
         self.send(bytes([self.CMD_REPORT]), broadcast)
         packet = self.read(7)
 
@@ -69,17 +69,13 @@ class PyrometerSerial:
             logger.warning('Response echoed command %s instead of %s',
                            hex(packet[0]), hex(self.CMD_REPORT))
 
-        reference = int.from_bytes(packet[1:3], 'big')
+        thermopile = int.from_bytes(packet[1:3], 'big')
         thermistor = int.from_bytes(packet[3:5], 'big')
-        thermopile = int.from_bytes(packet[5:7], 'big')
+        reference = int.from_bytes(packet[5:7], 'big')
         logger.debug('Measured: ref %s; tr %s; tp %s',
                      reference, thermistor, thermopile)
-        if convert:
-            return self.adc_to_voltage(reference), \
-                    self.adc_to_voltage(thermistor), \
-                    self.adc_to_voltage(thermopile)
-        else:
-            return reference, thermistor, thermopile
+        
+        return reference, thermistor, thermopile
 
     @staticmethod
     def adc_to_voltage(adc_value):
