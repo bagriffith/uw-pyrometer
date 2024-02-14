@@ -1,0 +1,86 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "uw-pyrometer"
+dynamic = ["version"]
+description = 'Interface with UW built pyrometer boards.'
+readme = "README.md"
+requires-python = ">=3.8"
+license = "MIT"
+keywords = []
+authors = [
+  { name = "Brady Griffith", email = "bagriff@uw.edu" },
+]
+classifiers = [
+  "Development Status :: 3 - Alpha",
+  "Programming Language :: Python",
+  "Programming Language :: Python :: 3.8",
+  "Programming Language :: Python :: 3.9",
+  "Programming Language :: Python :: 3.10",
+  "Programming Language :: Python :: 3.11",
+  "Programming Language :: Python :: Implementation :: CPython",
+  "Programming Language :: Python :: Implementation :: PyPy",
+]
+dependencies = [
+  "click",
+  "pyserial"
+]
+
+[project.urls]
+Documentation = "https://github.com/bagriffith/uw-pyrometer#readme"
+Issues = "https://github.com/bagriffith/uw-pyrometer/issues"
+Source = "https://github.com/bagriffith/uw-pyrometer"
+
+[project.scripts]
+uw-pyrometer = "uw_pyrometer.cli:uw_pyrometer"
+
+[tool.hatch.version]
+path = "src/uw_pyrometer/__about__.py"
+
+[tool.hatch.envs.default]
+dependencies = [
+  "coverage[toml]>=6.5",
+  "pytest",
+]
+[tool.hatch.envs.default.scripts]
+test = "pytest {args:tests}"
+test-cov = "coverage run -m pytest {args:tests}"
+cov-report = [
+  "- coverage combine",
+  "coverage report",
+]
+cov = [
+  "test-cov",
+  "cov-report",
+]
+
+[[tool.hatch.envs.all.matrix]]
+python = ["3.8", "3.9", "3.10", "3.11", "3.12"]
+
+[tool.hatch.envs.types]
+dependencies = [
+  "mypy>=1.0.0",
+]
+[tool.hatch.envs.types.scripts]
+check = "mypy --install-types --non-interactive {args:src/uw_pyrometer tests}"
+
+[tool.coverage.run]
+source_pkgs = ["uw_pyrometer", "tests"]
+branch = true
+parallel = true
+omit = [
+  "src/uw_pyrometer/__about__.py",
+]
+
+[tool.coverage.paths]
+uw_pyrometer = ["src/uw_pyrometer", "*/uw-pyrometer/src/uw_pyrometer"]
+tests = ["tests", "*/uw-pyrometer/tests"]
+
+[tool.coverage.report]
+exclude_lines = [
+  "no cov",
+  "if __name__ == .__main__.:",
+  "if TYPE_CHECKING:",
+]
