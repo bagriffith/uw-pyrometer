@@ -32,7 +32,7 @@ def measure(serial_path, device_id, verbose, broadcast, interval, samples, avera
     if verbose:
         pyrometer.logger.setLevel('DEBUG')
         pyrometer.logger.addHandler(logging.StreamHandler())
-    
+
     if samples is None:
         samples = average
 
@@ -62,5 +62,21 @@ def measure(serial_path, device_id, verbose, broadcast, interval, samples, avera
                     click.echo(f'{key+separator:<14}{value:1.3f}')
         except TimeoutError:
             click.echo('Read timed out.')
+
+
+@uw_pyrometer.command()
+@click.argument('serial_path', type=str)
+@click.argument('thermopile', type=click.IntRange(0, 255))
+@click.argument('thermistor', type=click.IntRange(0, 255))
+@click.option('--device_id', '-d', default=0, type=click.IntRange(0, 255))
+@click.option('--verbose', '-v', default=False, is_flag=True)
+@click.option('--broadcast', '-b', default=False, is_flag=True)
+def gain(serial_path, thermopile, thermistor, device_id, verbose, broadcast):
+    if verbose:
+        pyrometer.logger.setLevel('DEBUG')
+        pyrometer.logger.addHandler(logging.StreamHandler())
+
+    device = pyrometer.PyrometerSerial(device_id, serial_path)
+    device.set_gains(thermopile, thermistor, broadcast)
 
 uw_pyrometer.add_command(measure)
