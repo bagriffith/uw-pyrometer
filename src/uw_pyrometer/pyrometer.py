@@ -47,7 +47,9 @@ class PyrometerSerial:
     CMD_REPORT = 0x00
     THERMISTOR_CURVE = np.genfromtxt(DATA_DIR / 'dc_4007.csv', delimiter=",", skip_header=1)
     # Normalize to room temperature
-    THERMISTOR_CURVE[:, 1] /= np.interp(PyrometerCalibration.ROOM_TEMP, THERMISTOR_CURVE[:, 0], THERMISTOR_CURVE[:, 1])
+    THERMISTOR_CURVE[:, 1] /= np.interp(PyrometerCalibration.ROOM_TEMP,
+                                        THERMISTOR_CURVE[:, 0],
+                                        THERMISTOR_CURVE[:, 1])
 
     def __init__(self, device_id, address, calibration=None):
         if not 0 <= device_id < 255:
@@ -135,7 +137,9 @@ class PyrometerSerial:
         if not (self.THERMISTOR_CURVE[-1, 1] < resistance/self.calibration.r_zero < self.THERMISTOR_CURVE[0, 1]):
             logger.warning('Thermistor temperature is out of calibration range')
 
-        temperature = np.interp(resistance/self.calibration.r_zero, self.THERMISTOR_CURVE[::-1, 1], self.THERMISTOR_CURVE[::-1, 0])
+        temperature = np.interp(resistance/self.calibration.r_zero,
+                                self.THERMISTOR_CURVE[::-1, 1],
+                                self.THERMISTOR_CURVE[::-1, 0])
         # temperature = (resistance / self.calibration.r_zero - 1) / self.calibration.r_slope
         return temperature
 

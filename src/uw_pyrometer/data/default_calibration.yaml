@@ -1,4 +1,4 @@
 thermistor:
-  room_temp: 25_003.8 # R_th @ 22C
+  room_temp: 23_002.28 # R_th @ 22C
 thermopile:
   responsivity: 3.86e-5 # V/uW
