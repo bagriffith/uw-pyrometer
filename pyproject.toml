@@ -29,7 +29,9 @@ classifiers = [
 ]
 dependencies = [
   "click",
-  "pyserial"
+  "pyserial",
+  "pyyaml",
+  "numpy"
 ]
 
 [project.urls]

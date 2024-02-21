@@ -1,12 +1,42 @@
 import logging
+from importlib import resources as impresources
+from . import data
 import serial
+import yaml
+import numpy as np
 
 logger = logging.getLogger(__name__)
+
+UNITS = {'Temperature': 'C',
+         'Power': 'uW',
+         'Voltage': 'V'}
+
+DATA_DIR = impresources.files(data)
+DEFAULT_CALIBRATION = DATA_DIR / 'default_calibration.yaml'
+
+
+class PyrometerCalibration:
+    __spec__ = ('thermistor_slope', 'thermistor_zero')
+    ROOM_TEMP = 22.0 # Deg C
+
+    def __init__(self, thermistor_zero, thermopile_resp):
+        self.r_zero = thermistor_zero
+        self.tp_resp = thermopile_resp
+    
+    @staticmethod
+    def from_yaml(path):
+        # process yaml
+        with open(path) as f:
+            calibration_yaml = yaml.safe_load(f)
+        thermistor_zero = calibration_yaml['thermistor']['room_temp']
+        thermopile_resp = calibration_yaml['thermopile']['responsivity']
+
+        return PyrometerCalibration(thermistor_zero, thermopile_resp)
 
 
 class PyrometerSerial:
     """Interface a UW pyrometer board."""
-    __spec__ = ('id', 'serial')
+    __spec__ = ('id', 'serial', 'pot_thermopile', 'pot_thermistor', 'calibration')
     serial_kw_args = {'baudrate': 9600,
                       'bytesize': 8,
                       'parity': 'N',
@@ -15,14 +45,23 @@ class PyrometerSerial:
     SYNC_WORD = 0x55
     CMD_SET_POT = 0x01
     CMD_REPORT = 0x00
+    THERMISTOR_CURVE = np.genfromtxt(DATA_DIR / 'dc_4007.csv', delimiter=",", skip_header=1)
+    # Normalize to room temperature
+    THERMISTOR_CURVE[:, 1] /= np.interp(PyrometerCalibration.ROOM_TEMP, THERMISTOR_CURVE[:, 0], THERMISTOR_CURVE[:, 1])
 
-    def __init__(self, device_id, address) -> None:
+    def __init__(self, device_id, address, calibration=None):
         if not 0 <= device_id < 255:
             raise ValueError('Device id must be one byte. '
                              '0xFF is reserved for broadcast.')
 
         self.id = device_id
         self.serial = serial.Serial(address, **self.serial_kw_args)
+        self.pot_thermopile = None
+        self.pot_thermistor = None
+        if calibration is None:
+            self.calibration = PyrometerCalibration.from_yaml(DEFAULT_CALIBRATION)
+        else:
+            self.calibration = calibration
 
     def __enter__(self):
         self.open()
@@ -52,6 +91,9 @@ class PyrometerSerial:
         packet = self.serial.read(packet_size)
         logger.debug('Read %s', [f'0x{x:02X}' for x in packet])
         if len(packet) != packet_size:
+            # Assume the board has power cycled
+            self.pot_thermopile = None
+            self.pot_thermistor = None
             raise TimeoutError('Packet read timed out.')
         return packet
 
@@ -59,7 +101,8 @@ class PyrometerSerial:
         if not (0 <= thermopile_gain < 256 and 0 <= thermistor_gain < 256):
             raise ValueError('Gains must be single byte.')
         self.send([self.CMD_SET_POT, thermopile_gain, thermistor_gain], broadcast)
-        # Should I look for a response?
+        self.pot_thermopile = thermopile_gain
+        self.pot_thermistor = thermistor_gain
 
     def get_measurement(self, broadcast=False):
         self.send(bytes([self.CMD_REPORT]), broadcast)
@@ -74,8 +117,37 @@ class PyrometerSerial:
         reference = int.from_bytes(packet[5:7], 'big')
         logger.debug('Measured: ref %s; tr %s; tp %s',
                      reference, thermistor, thermopile)
-        
+        for measurement, name in zip([thermopile, thermistor, reference],
+                                     ['Thermopile', 'Thermistor', 'Reference']):
+            if not 16 < measurement < 1008:
+                logger.warning('Measurement %s is close to ADC limits.', name)
+
         return reference, thermistor, thermopile
+
+    def thermistor_temperature(self, thermistor_voltage):
+        if self.pot_thermistor is None:
+            raise RuntimeError('Potentiometer not set.')
+
+        pre_amp_voltage = self.pot_thermistor * thermistor_voltage / 255
+        resistance = 2.2e6 / (5.0/pre_amp_voltage - 1.) # R_T / R4
+
+        logger.debug('Resistance %s', resistance)
+        if not (self.THERMISTOR_CURVE[-1, 1] < resistance/self.calibration.r_zero < self.THERMISTOR_CURVE[0, 1]):
+            logger.warning('Thermistor temperature is out of calibration range')
+
+        temperature = np.interp(resistance/self.calibration.r_zero, self.THERMISTOR_CURVE[::-1, 1], self.THERMISTOR_CURVE[::-1, 0])
+        # temperature = (resistance / self.calibration.r_zero - 1) / self.calibration.r_slope
+        return temperature
+
+    def thermopile_power(self, thermopile_voltage, reference_voltage=2.5):
+        pre_amp_voltage = self.thermopile_voltage(thermopile_voltage, reference_voltage)
+        power = pre_amp_voltage / self.calibration.tp_resp
+        return power
+
+    def thermopile_voltage(self, thermopile_voltage, reference_voltage=2.5):
+        if self.pot_thermopile is None:
+            raise RuntimeError('Potentiometer not set.')
+        return self.pot_thermopile * (thermopile_voltage - reference_voltage) / (255 * 51.)
 
     @staticmethod
     def adc_to_voltage(adc_value):

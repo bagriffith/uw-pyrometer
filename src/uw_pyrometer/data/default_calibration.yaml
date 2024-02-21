@@ -1,0 +1,4 @@
+thermistor:
+  room_temp: 25_003.8 # R_th @ 22C
+thermopile:
+  responsivity: 3.86e-5 # V/uW
