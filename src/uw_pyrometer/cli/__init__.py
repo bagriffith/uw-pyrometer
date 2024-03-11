@@ -94,10 +94,8 @@ def measure_adc(serial_path, device_id, verbose, broadcast, interval,
 
 @uw_pyrometer.command()
 @click.argument('serial_path', type=str)
-@click.argument('thermopile', type=click.IntRange(0, 255),
-                help='Thermopile amplifier feedback value. Gain is 51*255/n.')
-@click.argument('thermistor', type=click.IntRange(0, 255),
-                help='Thermistor amplifier feedback value. Gain is 255/n.')
+@click.argument('thermopile', type=click.IntRange(0, 255))
+@click.argument('thermistor', type=click.IntRange(0, 255))
 @click.option('--device_id', '-d', default=0, type=click.IntRange(0, 254))
 @click.option('--verbose', '-v', default=False, is_flag=True)
 @click.option('--broadcast', '-b', default=False, is_flag=True,
@@ -139,15 +137,15 @@ def measure_physical(serial_path, device_id, calibration, gains,
                      verbose, interval, samples, average,
                      show_prelim, no_clear, voltage):
     """Report the thermistor temperature and thermopile power."""
-    if verbose:
-        pyrometer.logger.setLevel('DEBUG')
-        pyrometer.logger.addHandler(logging.StreamHandler())
-        logger.setLevel('DEBUG')
-        logger.addHandler(logging.StreamHandler())
+    pyrometer.logger.setLevel('DEBUG' if verbose else 'WARNING')
+    logger.setLevel('DEBUG' if verbose else 'WARNING')
+    logger.addHandler(logging.StreamHandler())
+    pyrometer.logger.addHandler(logging.StreamHandler())
 
     device = pyrometer.PyrometerSerial(device_id, serial_path, calibration)
+    time.sleep(0.1)
     device.set_gains(*gains)
-    time.sleep(0.5) # Be sure the command processes
+    time.sleep(0.1) # Be sure the command processes
 
     if samples is None:
         samples = average
