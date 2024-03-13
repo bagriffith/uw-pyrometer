@@ -1,9 +1,9 @@
 import logging
 from importlib import resources as impresources
-from . import data
 import serial
 import yaml
 import numpy as np
+import uw_pyrometer
 
 logger = logging.getLogger(__name__)
 
@@ -11,7 +11,7 @@ UNITS = {'Temperature': 'C',
          'Power': 'uW',
          'Voltage': 'V'}
 
-DATA_DIR = impresources.files(data)
+DATA_DIR = impresources.files(uw_pyrometer) / 'data/'
 DEFAULT_CALIBRATION = DATA_DIR / 'default_calibration.yaml'
 
 
