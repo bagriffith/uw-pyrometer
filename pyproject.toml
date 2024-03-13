@@ -31,7 +31,8 @@ dependencies = [
   "click",
   "pyserial",
   "pyyaml",
-  "numpy"
+  "numpy",
+  "matplotlib"
 ]
 
 [project.urls]
@@ -40,7 +41,8 @@ Issues = "https://github.com/bagriffith/uw-pyrometer/issues"
 Source = "https://github.com/bagriffith/uw-pyrometer"
 
 [project.scripts]
-uw-pyrometer = "uw_pyrometer.cli:uw_pyrometer"
+uw-pyrometer = "uw_pyrometer.cli.instrument:uw_pyrometer"
+emissivity-routine = "uw_pyrometer.cli.emissivity:emissivity_routine"
 
 [tool.hatch.version]
 path = "src/uw_pyrometer/__about__.py"
