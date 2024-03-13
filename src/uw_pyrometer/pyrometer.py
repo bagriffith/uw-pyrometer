@@ -1,15 +1,15 @@
 import logging
+import asyncio
+import time
 from importlib import resources as impresources
-from . import data
 import serial
 import yaml
 import numpy as np
+from . import data
 
 logger = logging.getLogger(__name__)
 
-UNITS = {'Temperature': 'C',
-         'Power': 'uW',
-         'Voltage': 'V'}
+MEAS_NAMES = ['tr_v', 'temp', 'ref_v', 'tp_v', 'power']
 
 DATA_DIR = impresources.files(data)
 DEFAULT_CALIBRATION = DATA_DIR / 'default_calibration.yaml'
@@ -22,11 +22,11 @@ class PyrometerCalibration:
     def __init__(self, thermistor_zero, thermopile_resp):
         self.r_zero = thermistor_zero
         self.tp_resp = thermopile_resp
-    
+
     @staticmethod
     def from_yaml(path):
         # process yaml
-        with open(path) as f:
+        with open(path, encoding='utf8') as f:
             calibration_yaml = yaml.safe_load(f)
         thermistor_zero = calibration_yaml['thermistor']['room_temp']
         thermopile_resp = calibration_yaml['thermopile']['responsivity']
@@ -103,6 +103,7 @@ class PyrometerSerial:
         if not (0 <= thermopile_gain < 256 and 0 <= thermistor_gain < 256):
             raise ValueError('Gains must be single byte.')
         self.send([self.CMD_SET_POT, thermopile_gain, thermistor_gain], broadcast)
+        time.sleep(10.0)
         self.pot_thermopile = thermopile_gain
         self.pot_thermistor = thermistor_gain
 
@@ -156,3 +157,101 @@ class PyrometerSerial:
     @staticmethod
     def adc_to_voltage(adc_value):
         return (adc_value * 5)/1024.
+
+    def auto_gain(self, start=None):
+        tp_gain, tr_gain = (20, 20) if start is None else start
+
+        min_error_tp, min_error_tr = 1024, 1024
+
+        trial_tp_gain = tp_gain
+        trial_tr_gain = tr_gain
+
+        for gain_n in range(32):
+            self.set_gains(trial_tp_gain, trial_tr_gain)
+            _, tr, tp = self.get_measurement()
+
+            trial_error_tp = abs(abs(tp-512) - 256)
+            trial_error_tr = abs(tr - 512)
+
+            if trial_error_tp < min_error_tp:
+                min_error_tp = trial_error_tp
+                tp_gain = trial_tp_gain
+
+            if trial_error_tr < min_error_tr:
+                min_error_tr = trial_error_tr
+                tr_gain = trial_tr_gain
+
+            if max(min_error_tp, min_error_tr) < 64:
+                logger.info('Sufficient value found after %s guesses', gain_n+1)
+                logger.info('Best gains is (%s,%s)', tp_gain, tr_gain)
+                break
+
+            # Guess a better value
+            if tp == 1024:
+                trial_tp_gain = trial_tp_gain//2
+            else:
+                trial_tp_gain = (abs(tp-512) * trial_tp_gain) // 256
+
+
+            if tr == 1024:
+                trial_tr_gain = trial_tr_gain//2
+            else:
+                trial_tr_gain = (tr * trial_tr_gain) // 512
+
+            trial_tp_gain = max(min(trial_tp_gain, 255), 1)
+            trial_tr_gain = max(min(trial_tr_gain, 255), 1)
+
+            if trial_tp_gain == tp_gain and  trial_tr_gain == tr_gain:
+                logger.info('Most acceptable value found after %s guesses', gain_n+1)
+                logger.info('Best gains is (%s,%s)', tp_gain, tr_gain)
+                break
+
+            logger.debug('Try: (%s, %s)', trial_tp_gain, trial_tr_gain)
+        else:
+            logger.warning('Correct gain not found.')
+
+        self.set_gains(tp_gain, tr_gain)
+
+        return tp_gain, tr_gain
+
+    async def sample(self, samples, interval, complete=None, updater_f=None):
+        if complete is None:
+            complete = asyncio.Event()
+
+        sample_history = {x: [] for x in MEAS_NAMES}
+
+        samples_taken = 0
+        while not complete.is_set():
+            try:
+                ref, tr, tp = await asyncio.to_thread(self.get_measurement)
+            except TimeoutError:
+                logger.warning('Read timed out')
+                continue
+
+            # Increment measurement counter
+            samples_taken += 1
+            if samples_taken >= samples:
+                complete.set() # Done measuring
+
+            tr_v = self.adc_to_voltage(tr)
+            sample_history['tr_v'].append(tr_v)
+            temp = self.thermistor_temperature(tr_v)
+            sample_history['temp'].append(temp)
+
+            tp_v = self.adc_to_voltage(tp)
+            sample_history['tp_v'].append(tp_v)
+            ref_v = self.adc_to_voltage(ref)
+            sample_history['ref_v'].append(ref_v)
+
+            power = self.thermopile_power(tp_v, ref_v)
+            sample_history['power'].append(power)
+
+            if updater_f is not None:
+                # Call an updater for a progress indicator
+                await asyncio.to_thread(updater_f, sample_history)
+
+            if not complete.is_set():
+                await asyncio.sleep(interval)
+            
+
+        return {k: sum(v)/len(v) for k, v in sample_history.items()}
