@@ -5,13 +5,13 @@ from importlib import resources as impresources
 import serial
 import yaml
 import numpy as np
-from . import data
+import uw_pyrometer
 
 logger = logging.getLogger(__name__)
 
 MEAS_NAMES = ['tr_v', 'temp', 'ref_v', 'tp_v', 'power']
 
-DATA_DIR = impresources.files(data)
+DATA_DIR = impresources.files(uw_pyrometer) / 'data/'
 DEFAULT_CALIBRATION = DATA_DIR / 'default_calibration.yaml'
 
 
@@ -80,12 +80,18 @@ class PyrometerSerial:
         logger.debug('Closing port')
         self.serial.close()
 
+    def clear(self):
+        self.serial.flush()
+        while self.serial.in_waiting:
+            self.read()
+
     def send(self, message, broadcast=False):
         header = bytes([self.SYNC_WORD, 0xFF if broadcast else self.id])
         self.serial.write(header)
         logger.debug('Writing %s', [f'0x{x:02X}' for x in header])
         self.serial.write(message)
         logger.debug('Writing %s', [f'0x{x:02X}' for x in message])
+        self.serial.flush()
 
     def read(self, packet_size=7):
         pre_data = self.serial.read_until(bytes([self.SYNC_WORD, self.id]))
@@ -102,12 +108,14 @@ class PyrometerSerial:
     def set_gains(self, thermopile_gain, thermistor_gain, broadcast=False):
         if not (0 <= thermopile_gain < 256 and 0 <= thermistor_gain < 256):
             raise ValueError('Gains must be single byte.')
+        self.clear()
         self.send([self.CMD_SET_POT, thermopile_gain, thermistor_gain], broadcast)
-        time.sleep(10.0)
+        time.sleep(10.0) # Gain changes take a while to show up
         self.pot_thermopile = thermopile_gain
         self.pot_thermistor = thermistor_gain
 
     def get_measurement(self, broadcast=False):
+        self.clear()
         self.send(bytes([self.CMD_REPORT]), broadcast)
         packet = self.read(7)
 
@@ -183,27 +191,35 @@ class PyrometerSerial:
 
             if max(min_error_tp, min_error_tr) < 64:
                 logger.info('Sufficient value found after %s guesses', gain_n+1)
-                logger.info('Best gains is (%s,%s)', tp_gain, tr_gain)
+                logger.info('Gains are (%s,%s)', tp_gain, tr_gain)
                 break
 
             # Guess a better value
             if tp == 1024:
-                trial_tp_gain = trial_tp_gain//2
+                trial_tp_gain = trial_tp_gain*2
             else:
-                trial_tp_gain = (abs(tp-512) * trial_tp_gain) // 256
-
+                guess = (abs(tp-512) * trial_tp_gain) // 256
+                if guess == trial_tp_gain:
+                    trial_tp_gain += -1 if abs(tp-512) < 255 else 1
+                else:
+                    trial_tp_gain = guess
+                    
 
             if tr == 1024:
-                trial_tr_gain = trial_tr_gain//2
+                trial_tr_gain = trial_tr_gain*2
             else:
-                trial_tr_gain = (tr * trial_tr_gain) // 512
+                guess = (tr * trial_tr_gain) // 512
+                if guess == trial_tr_gain:
+                    trial_tr_gain += -1 if tr < 255 else 1
+                else:
+                    trial_tr_gain = guess
 
             trial_tp_gain = max(min(trial_tp_gain, 255), 1)
             trial_tr_gain = max(min(trial_tr_gain, 255), 1)
 
-            if trial_tp_gain == tp_gain and  trial_tr_gain == tr_gain:
+            if (trial_tp_gain == tp_gain) and (trial_tr_gain == tr_gain):
                 logger.info('Most acceptable value found after %s guesses', gain_n+1)
-                logger.info('Best gains is (%s,%s)', tp_gain, tr_gain)
+                logger.info('Gains are (%s,%s)', tp_gain, tr_gain)
                 break
 
             logger.debug('Try: (%s, %s)', trial_tp_gain, trial_tr_gain)
@@ -252,6 +268,5 @@ class PyrometerSerial:
 
             if not complete.is_set():
                 await asyncio.sleep(interval)
-            
 
         return {k: sum(v)/len(v) for k, v in sample_history.items()}

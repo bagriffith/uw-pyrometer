@@ -19,7 +19,7 @@ import time
 import serial
 import serial.tools.list_ports as slp
 
-
+ATTEMPTS = 3
 BAUD = 9600
 TIMEOUT = 1.0
 PARITY = serial.PARITY_NONE
@@ -120,30 +120,43 @@ class omega_pid:
     def readline(self, *args):
         return self.serial.readline(*args).decode('ASCII')
 
+    def clear(self):
+        self.serial.flush()
+        while self.serial.in_waiting:
+            self.read()
+
     def restart(self):
+        self.clear()
         self.write(REC_CHAR + 'Z02' + EOL)
         return 0
 
     def val(self):
-        self.readline() # clean serial buffer
+        # self.readline() # clean serial buffer
+        self.clear()
         # momentary temperature of the thermocouple
         cmd='X01'
         self.write(REC_CHAR + cmd + EOL)
-        reply = self.readline()
-        # print('Reply:', reply)
-        if (len(reply)>1):
-            if cmd in reply:
-                rval = float(reply[3:-1])
+        for _ in range(ATTEMPTS):
+            reply = self.readline()
+            # ('Val reply:', reply)
+            if (len(reply)>4):
+                if cmd in reply:
+                    rval = float(reply[3:-1])
+                else:
+                    rval = float(reply[3:-1])
+                break
             else:
-                rval = float(reply[3:-1])
+                continue
         else:
+            raise TimeoutError('Value read timed out.')
             rval = None
 
         return rval
 
     def input_type_format(self,use_tc='k',use_rtd_value=None,use_rtd_curve=None,
         use_proc=None):
-        self.readline() # clean serial buffer
+        # self.readline() # clean serial buffer
+        self.clear()
         # configuration register
         global INPUT_CLASS,INPUT_RANGE,INPUT_RTD_RVAL
         cmd='07'
@@ -242,7 +255,8 @@ class omega_pid:
         return rval
 
     def rdgcnf(self,decimal_point=None,degrees_f=None,filter_const=None):
-        self.readline() # clean serial buffer
+        # self.readline() # clean serial buffer
+        self.clear()
         # configuration register
         global RDGCNG_DECIMAL_POINT,RDGCNG_DEG_FARENHEIT,RDGCNG_FILTER_CONSTANT
         cmd='08'
@@ -296,7 +310,8 @@ class omega_pid:
 
 
     def misccnf(self,sp_dev=None,enable_self=None,full_id=None,sp_id=None):
-        self.readline() # clean serial buffer
+        # self.readline() # clean serial buffer
+        self.clear()
         # configuration register
         global MISC_SP_DEV,MISC_SELF,MISC_FULL_ID,MISC_SP_ID
         cmd='24'
@@ -341,7 +356,8 @@ class omega_pid:
 
     def out1cnf(self,enable_autotune=None,anti_wind_up=None,enable_autopid=None,enable_direct=None,
         time_prop=None):
-        self.readline() # clean serial buffer
+        # self.readline() # clean serial buffer
+        self.clear()
         # configuration register
         global OUT1CNG_AUTOTUNE,OUT1CNG_ANTI_WIND_UP,OUT1CNG_AUTOPID,OUT1CNG_DIRECT,OUT1CNG_TIME_PROP_PID
         cmd='0C'
@@ -394,7 +410,8 @@ class omega_pid:
 
     def out2cnf(self,enable_soak=None,enable_ramp=None,enable_autopid=None,enable_direct=None,
         time_prop=None,damping=None):
-        self.readline() # clean serial buffer
+        # self.readline() # clean serial buffer
+        self.clear()
         # configuration register
         global OUT2CNG_SOAK,OUT2CNG_RAMP,OUT2CNG_AUTOPID,OUT2CNG_DIRECT,OUT2CNG_TIME_PROP_PID
         cmd='0D'
@@ -454,7 +471,8 @@ class omega_pid:
     def sp(self,val=None,save=None,index=1):
         # set point 1
         #   temperature to which the stove should be at
-        self.readline()
+        # self.readline()
+        self.clear()
         if (index==1):
             cmd='01'
         else:
@@ -480,6 +498,7 @@ class omega_pid:
         return float(val)
 
     def standby(self,status=1):
+        self.clear()
         cmd='03'
         if (status==1):
             self.write(REC_CHAR + DISABLE_CMD +  cmd + EOL)
@@ -488,6 +507,7 @@ class omega_pid:
         return (status==1)
 
     def alarm(self,status=1,index=1):
+        self.clear()
         if (index==1):
             cmd='01'
         else:
@@ -499,6 +519,7 @@ class omega_pid:
         return (status==1)
 
     def ramptime(self,val=None):
+        self.clear()
         self.readline()
         cmd='0E'
         if val is None:
@@ -524,7 +545,8 @@ class omega_pid:
         return val
 
     def soaktime(self,val=None,save=None):
-        self.readline()
+        #self.readline()
+        self.clear()
         cmd='1E'
         if val is None:
             self.write(REC_CHAR + READ_CMD + cmd + EOL)
@@ -548,7 +570,8 @@ class omega_pid:
         return val
 
     def cycle(self,val=None,save=None,index=1):
-        self.readline()
+        #self.readline()
+        self.clear()
         if (index==1):
             cmd='1A'
         else:
@@ -572,7 +595,8 @@ class omega_pid:
         return val
 
     def band(self,val=None,save=None,index=1):
-        self.readline()
+        # self.readline()
+        self.clear()
         if (index==1):
             cmd='17'
         else:
@@ -595,7 +619,8 @@ class omega_pid:
         return val
 
     def reset(self,val=None,save=None):
-        self.readline()
+        # self.readline()
+        self.clear()
         cmd='18'
         if val is None:
             self.write(REC_CHAR + GET_CMD +  cmd + EOL)
@@ -617,7 +642,8 @@ class omega_pid:
         return val
 
     def rate(self,val=None,save=None):
-        self.readline()
+        # self.readline()
+        self.clear()
         cmd='19'
         if val is None:
             self.write(REC_CHAR + GET_CMD +  cmd + EOL)
@@ -639,7 +665,8 @@ class omega_pid:
         return val
 
     def id(self,val=None):
-        self.readline()
+        # self.readline()
+        self.clear()
         cmd='05'
         if val is None:
             self.write(REC_CHAR + READ_CMD +  cmd + EOL)

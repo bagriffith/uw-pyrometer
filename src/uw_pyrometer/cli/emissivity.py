@@ -26,13 +26,29 @@ def emissivity_routine():
 @click.option('--interval', '-i', default=1.0, type=click.FloatRange(min_open=0),
               help='Polling interval in seconds.')
 @click.option('--plot', '-p', default=False, is_flag=True)
-@click.option('--output', '-0', default=None, type=click.Path(exists=True),
+@click.option('--output', '-o', default=None, type=click.Path(exists=False),
               help='Output csv path.')
+@click.option('--verbose', '-v', default=False, is_flag=True)
+@click.option('--log', '-l', default=False, is_flag=True)
 def read(tp_serial, temp_serial, temps, device_id,
-         calibration, samples, interval, plot):
+         calibration, samples, interval, plot, output, verbose, log):
+    # Setup log
+    debug = verbose or log
+    pyrometer.logger.setLevel('DEBUG' if debug else 'WARNING')
+    emissivity.logger.setLevel('DEBUG' if debug else 'WARNING')
+    logger.setLevel('DEBUG' if debug else 'WARNING')
+    logger.handlers.clear()
+    emissivity.logger.handlers.clear()
+    pyrometer.logger.handlers.clear()
+    handler = logging.FileHandler('emissivity.log') if log else logging.StreamHandler()
+    logger.addHandler(handler)
+    pyrometer.logger.addHandler(handler)
+    emissivity.logger.addHandler(handler)
+    logger.info('Starting for temps: %s', temps)
+
     tp_dev = pyrometer.PyrometerSerial(device_id, tp_serial, calibration)
     temp_dev = omega_controller.omega_pid(port=temp_serial)
-    emissivity.run(tp_dev, temp_dev, temps, samples, interval, plot)
+    emissivity.run(tp_dev, temp_dev, temps, samples, interval, plot, output)
 
 
 @emissivity_routine.command()

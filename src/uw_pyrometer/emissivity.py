@@ -3,22 +3,20 @@ import asyncio
 import logging
 from uw_pyrometer import pyrometer
 
-T_DEADBAND = 1.0
+T_DEADBAND = 0.2
 TEST_TIMEOUT = 600  # Seconds
 
 logger = logging.getLogger(__name__)
 
-# TODO: Avg block temp sampling func
-
 
 def analyze_emissivity(measurements, fig=None, output=None):
-    print(measurements)
-
     if output is not None:
+        logger.info('Writting File')
         with open(output, 'w', encoding='utf8') as f:
             f.write(','.join(measurements.keys())+'\n')
             for row in zip(*measurements.values()):
-                f.write(','.join([f'{x:.1f}' for x in row])+'\n')   
+                f.write(','.join([f'{x:.3f}' for x in row])+'\n')
+        logger.info('Writting done')
 
     # Regression
 
@@ -34,19 +32,22 @@ def analyze_emissivity(measurements, fig=None, output=None):
 
 async def set_and_wait(device, set_temp):
     device.sp(val=set_temp, save=False, index=2)
-    await asyncio.sleep(0.2)
+    await asyncio.sleep(3.0)
     device.restart()
-    await asyncio.sleep(0.2)
+    await asyncio.sleep(3.0)
 
-    while device.val() - set_temp > 0.1:
-        await asyncio.sleep(2.0)
+    while abs(device.val() - set_temp) > T_DEADBAND:
+        logger.debug('Not hot yet')
+        await asyncio.sleep(20.0)
 
 
 async def get_avg_temp(device, end_signal, callback_f):
-    temp_samples = []
+    temp_samples = [device.val()]
     while not end_signal.is_set():
+        # Don't check too often
+        await asyncio.sleep(10.0)
         temp_samples.append(device.val())
-        await asyncio.sleep(2.0)
+    logger.debug('Done measuring temp')
     v = sum(temp_samples)/len(temp_samples)
     callback_f(v)
     return v
@@ -55,6 +56,8 @@ async def get_avg_temp(device, end_signal, callback_f):
 async def run_temps(tp_dev, temp_dev, temps, samples, interval, update_f=None):
     measurements = {x: [] for x in pyrometer.MEAS_NAMES}
     measurements['block_temp'] = []
+    measurements['tp_gain'] = []
+    measurements['tr_gain'] = []
 
     def update_w_print(m):
         for k, v in m.items():
@@ -65,29 +68,28 @@ async def run_temps(tp_dev, temp_dev, temps, samples, interval, update_f=None):
         print(f'{temp:.1f} C, {power:.1f} uW')
         
         if update_f is not None:
-            update_f(m) # For plotting, or other updates
+            update_f(measurements) # For plotting, or other updates
     
     tp_sampled = asyncio.Event()
-    sample_task = asyncio.sleep(0)
-    measure_task = asyncio.sleep(0)
     gains = None
     for t in temps:
         print('Temp:', t)
-        temp_set = set_and_wait(temp_dev, t)
-        await temp_set
-        gains = await asyncio.to_thread(tp_dev.autogain(gains))
+        await set_and_wait(temp_dev, t)
+        logger.info('Setting gains')
 
-        await sample_task
-        await measure_task
+        gains = await asyncio.to_thread(tp_dev.auto_gain, gains)
+        measurements['tp_gain'].append(gains[0])
+        measurements['tr_gain'].append(gains[1])
         tp_sampled.clear()
 
-        sample_task = asyncio.create_task(tp_dev.sample(samples, interval, tp_sampled, update_w_print))
+        sample_task = asyncio.create_task(tp_dev.sample(samples, interval, tp_sampled))
         measure_task = asyncio.create_task(get_avg_temp(temp_dev, tp_sampled, measurements['block_temp'].append))
 
-        await asyncio.wait_for(tp_sampled.wait(), 10.0)
+        await tp_sampled.wait()
+        await measure_task
+        update_w_print(await sample_task)
+        
 
-    await sample_task
-    await measure_task
     return measurements
 
 
@@ -98,7 +100,7 @@ def run(tp_dev, temp_dev, temps, samples, interval, plot=False, output=None):
     fig = None if plot else None # Matplotlib gui figure window
     update_f = lambda x: analyze_emissivity(x, fig, output)
 
-    measurements  = asyncio.run(run_temps(tp_dev, temp_dev, temps,
+    measurements = asyncio.run(run_temps(tp_dev, temp_dev, temps,
                                           samples, interval, update_f))
     analyze_emissivity(measurements, fig, output)
 
@@ -134,6 +136,7 @@ def test(heat_block):
 
         print('\b'*10 + f'Temp {measured_temp[-1]:5.1f}', end='', flush=True)
 
+    print()
     heat_block.sp(val=20.0, save=False, index=2)
     time.sleep(0.5)
     heat_block.restart()

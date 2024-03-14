@@ -160,7 +160,8 @@ def measure_physical(serial_path, device_id, calibration, gains,
     device = pyrometer.PyrometerSerial(device_id, serial_path, calibration)
     if gains is None:
         click.echo('Auto gain')
-        device.auto_gain()
+        gains = device.auto_gain()
+        print('Gains:', gains)
     else:
         click.echo('Setting gain')
         device.set_gains(*gains)
