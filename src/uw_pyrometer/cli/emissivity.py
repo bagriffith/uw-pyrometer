@@ -1,5 +1,6 @@
 import logging
 import click
+import matplotlib.pyplot as plt
 
 from uw_pyrometer import emissivity, pyrometer, omega_controller, cli
 from uw_pyrometer.__about__ import __version__
@@ -11,6 +12,32 @@ logger = logging.getLogger(__name__)
 @click.version_option(version=__version__, prog_name="emissivity-routine")
 def emissivity_routine():
     pass
+
+@emissivity_routine.command()
+@click.argument('data_path', type=click.Path(exists=False))
+@click.option('--output', '-o', default=None, type=click.Path(exists=False),
+              help='Output figure path.')
+def plot(data_path, output):
+    with open(data_path, encoding='utf8') as f:
+        header = f.readline().strip().split(',')
+        data = {k: [] for k in header}
+        for row in f.readlines():
+            for k, v in zip(header, row.strip().split(',')):
+                data[k].append(float(v))
+
+    plt.style.use(emissivity.PLOT_STYLE)
+    vis = emissivity.EmissivityVis()
+    t_lim = (min(data['block_temp'])-10, max(data['block_temp'])+10)
+    vis.set_txlim(*t_lim)
+    e, bg = emissivity.analyze_emissivity(data, vis)
+    # vis.ax.set_ylim([1e6*bg+e*x for x in vis.ax.get_xlim()])
+    print('Emissivity:', f'{e:.3f}')
+    print('Background:', f'{1e6*bg:.1f} uW')
+
+    if output is None:
+        plt.show()
+    else:
+        vis.savefig(output)
 
 
 @emissivity_routine.command()

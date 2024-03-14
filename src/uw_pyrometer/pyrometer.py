@@ -13,6 +13,7 @@ MEAS_NAMES = ['tr_v', 'temp', 'ref_v', 'tp_v', 'power']
 
 DATA_DIR = impresources.files(uw_pyrometer) / 'data/'
 DEFAULT_CALIBRATION = DATA_DIR / 'default_calibration.yaml'
+RESPONSIVITY = 5.063e-14 # W / K^4 = G * sigma
 
 
 class PyrometerCalibration:

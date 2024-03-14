@@ -1,15 +1,69 @@
 import time
 import asyncio
 import logging
-from uw_pyrometer import pyrometer
+from importlib.resources import files as imp_files
+import numpy as np
+import matplotlib.pyplot as plt
+import uw_pyrometer
 
 T_DEADBAND = 0.2
 TEST_TIMEOUT = 600  # Seconds
+data = np.loadtxt(imp_files(uw_pyrometer)/'data/bandpass.csv', delimiter=',')
+BP_TEMP = data[:, 0]
+BP_VAL = data[:, 1]
+
+PLOT_STYLE = imp_files(uw_pyrometer) / 'plot_style.mplstyle'
 
 logger = logging.getLogger(__name__)
 
+class EmissivityVis(plt.Figure):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.make_emissivity_ax()
 
-def analyze_emissivity(measurements, fig=None, output=None):
+    def set_txlim(self, l_lim, r_lim):
+        k = uw_pyrometer.pyrometer.RESPONSIVITY * bandpass(22.0)
+        x_lim = [1e6*k*to_k(x)**4 for x in (l_lim, r_lim)]
+        self.ax.set_xlim(*x_lim)
+
+    def make_emissivity_ax(self):
+        self.ax = self.add_subplot(111)
+        self.ax.set_xlabel('Blackbody Power (uW)')
+        self.ax.set_ylabel('Total Received Power (uW)')
+        self.set_txlim(20, 120)
+        self.ax.set_ylim(*self.ax.get_xlim())
+        # Fig should be created with
+        self.scatter = self.ax.scatter([], [])
+        self.fit, = self.ax.plot([], [], ls=':')
+
+        self.label = self.ax.annotate('No Data', (.47, .52), (.15, .7),
+                                      xycoords='axes fraction',
+                                      arrowprops=dict(facecolor='black',
+                                                      width=0.1, headwidth=4,
+                                                      headlength=6, shrink=.05))
+    def update_emissivity(self, x, y, bg, e):
+        self.scatter.set_offsets(np.c_[1e6*x, 1e6*y])
+
+        fit_x = np.linspace(*self.ax.get_xlim(), 100)
+        fit_y = e * fit_x + bg*1e6
+        self.fit.set_xdata(fit_x)
+        self.fit.set_ydata(fit_y)
+
+        self.label.set_text(f' ${e:01.3f} \\sigma T^4 + {1e6*bg:.1f}'
+                            + r' \text{uW}$')
+
+        self.ax.set_ylim([1e6*bg+e*x for x in self.ax.get_xlim()])
+        # self.label.set_position((fit_x[65], e * fit_x[65] + 1e6*bg))
+
+def to_k(temperature):
+    return 273.15 + temperature
+
+
+def bandpass(temperatue):
+    return np.interp(temperatue, BP_TEMP, BP_VAL)
+
+
+def analyze_emissivity(measurements, plot_elements=None, output=None):
     if output is not None:
         logger.info('Writting File')
         with open(output, 'w', encoding='utf8') as f:
@@ -19,15 +73,26 @@ def analyze_emissivity(measurements, fig=None, output=None):
         logger.info('Writting done')
 
     # Regression
-
-    # Calculate emissivity and error
-    emissivity = 0.0
-    background = 0.0
+    if len(measurements['block_temp']) >= 2:
+        temp = np.double(measurements['block_temp'])
+        k = uw_pyrometer.pyrometer.RESPONSIVITY # G * sigma
+        x = k * bandpass(temp)*to_k(temp)**4
+        temp_tp = np.double(measurements['temp'])
+        power = 1e-6 * np.double(measurements['power'])
+        y = power + k * bandpass(temp_tp)*to_k(temp_tp)**4
+        p, info = np.polynomial.polynomial.Polynomial.fit(x, y, 1, full=True)
+        background, emissivity = p.convert().coef
+    else:
+        background = 1e-6 * measurements['power'][0]
+        emissivity = 1.0
+    # TODO: Calcualte Error
 
     # Plot scatter
+    if plot_elements is not None:
+        plot_elements.update_emissivity(x, y, background, emissivity)
+        plt.show(block=False)
 
     return emissivity, background
-
 
 
 async def set_and_wait(device, set_temp):
@@ -96,9 +161,11 @@ async def run_temps(tp_dev, temp_dev, temps, samples, interval, update_f=None):
 def run(tp_dev, temp_dev, temps, samples, interval, plot=False, output=None):
     update_f = None
     if plot:
-        raise NotImplementedError('Live plot not finished')
+        plt.ion()
+    vis = EmissivityVis() if plot else None
+
     fig = None if plot else None # Matplotlib gui figure window
-    update_f = lambda x: analyze_emissivity(x, fig, output)
+    update_f = lambda x: analyze_emissivity(x, vis, output)
 
     measurements = asyncio.run(run_temps(tp_dev, temp_dev, temps,
                                           samples, interval, update_f))
