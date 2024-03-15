@@ -1,5 +1,7 @@
 import logging
 import click
+#import matplotlib
+#matplotlib.use('TkAgg')
 import matplotlib.pyplot as plt
 
 from uw_pyrometer import emissivity, pyrometer, omega_controller, cli
@@ -35,7 +37,8 @@ def plot(data_path, output):
     print('Background:', f'{1e6*bg:.1f} uW')
 
     if output is None:
-        plt.show()
+        plt.figure().canvas.manager.canvas.figure = vis
+        plt.show(block=True)
     else:
         vis.savefig(output)
 

@@ -177,7 +177,16 @@ class PyrometerSerial:
 
         for gain_n in range(32):
             self.set_gains(trial_tp_gain, trial_tr_gain)
-            _, tr, tp = self.get_measurement()
+
+            for i in range(4): # 4 retries on timeout
+                try:
+                    _, tr, tp = self.get_measurement()
+                    break
+                except TimeoutError:
+                    logger.warning('Read timed out')
+                    continue
+            else:
+                raise TimeoutError('Timed out on max attempts')
 
             trial_error_tp = abs(abs(tp-512) - 256)
             trial_error_tr = abs(tr - 512)

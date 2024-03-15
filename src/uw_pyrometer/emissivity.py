@@ -28,9 +28,9 @@ class EmissivityVis(plt.Figure):
 
     def make_emissivity_ax(self):
         self.ax = self.add_subplot(111)
-        self.ax.set_xlabel('Blackbody Power (uW)')
-        self.ax.set_ylabel('Total Received Power (uW)')
-        self.set_txlim(20, 120)
+        self.ax.set_xlabel(r'Blackbody Power (\si{\micro\watt})')
+        self.ax.set_ylabel(r'Total Received Power (\si{\micro\watt})')
+        self.set_txlim(15, 130)
         self.ax.set_ylim(*self.ax.get_xlim())
         # Fig should be created with
         self.scatter = self.ax.scatter([], [])
@@ -49,8 +49,7 @@ class EmissivityVis(plt.Figure):
         self.fit.set_xdata(fit_x)
         self.fit.set_ydata(fit_y)
 
-        self.label.set_text(f' ${e:01.3f} \\sigma T^4 + {1e6*bg:.1f}'
-                            + r' \text{uW}$')
+        self.label.set_text(r' $ \SI{' f'{e:.3e}' r'}{} \sigma T^4 + \SI{' f'{1e6*bg:.3e}' r'}{\micro\watt} $')
 
         self.ax.set_ylim([1e6*bg+e*x for x in self.ax.get_xlim()])
         # self.label.set_position((fit_x[65], e * fit_x[65] + 1e6*bg))
@@ -73,13 +72,14 @@ def analyze_emissivity(measurements, plot_elements=None, output=None):
         logger.info('Writting done')
 
     # Regression
+    
+    temp = np.double(measurements['block_temp'])
+    k = uw_pyrometer.pyrometer.RESPONSIVITY # G * sigma
+    x = k * bandpass(temp)*to_k(temp)**4
+    temp_tp = np.double(measurements['temp'])
+    power = 1e-6 * np.double(measurements['power'])
+    y = power + k * bandpass(temp_tp)*to_k(temp_tp)**4
     if len(measurements['block_temp']) >= 2:
-        temp = np.double(measurements['block_temp'])
-        k = uw_pyrometer.pyrometer.RESPONSIVITY # G * sigma
-        x = k * bandpass(temp)*to_k(temp)**4
-        temp_tp = np.double(measurements['temp'])
-        power = 1e-6 * np.double(measurements['power'])
-        y = power + k * bandpass(temp_tp)*to_k(temp_tp)**4
         p, info = np.polynomial.polynomial.Polynomial.fit(x, y, 1, full=True)
         background, emissivity = p.convert().coef
     else:
@@ -91,6 +91,7 @@ def analyze_emissivity(measurements, plot_elements=None, output=None):
     if plot_elements is not None:
         plot_elements.update_emissivity(x, y, background, emissivity)
         plt.show(block=False)
+        plt.pause(5.0)
 
     return emissivity, background
 
@@ -102,7 +103,7 @@ async def set_and_wait(device, set_temp):
     await asyncio.sleep(3.0)
 
     while abs(device.val() - set_temp) > T_DEADBAND:
-        logger.debug('Not hot yet')
+        logger.debug('Not at temperature yet')
         await asyncio.sleep(20.0)
 
 
@@ -119,7 +120,7 @@ async def get_avg_temp(device, end_signal, callback_f):
 
 
 async def run_temps(tp_dev, temp_dev, temps, samples, interval, update_f=None):
-    measurements = {x: [] for x in pyrometer.MEAS_NAMES}
+    measurements = {x: [] for x in uw_pyrometer.pyrometer.MEAS_NAMES}
     measurements['block_temp'] = []
     measurements['tp_gain'] = []
     measurements['tr_gain'] = []
@@ -160,9 +161,15 @@ async def run_temps(tp_dev, temp_dev, temps, samples, interval, update_f=None):
 
 def run(tp_dev, temp_dev, temps, samples, interval, plot=False, output=None):
     update_f = None
+    vis = None
     if plot:
+        logger.info('Setting up plots')
+        plt.style.use(PLOT_STYLE)
         plt.ion()
-    vis = EmissivityVis() if plot else None
+        vis = EmissivityVis()
+        plt.figure().canvas.manager.canvas.figure = vis
+        plt.show(block=False)
+        plt.pause(2.0)
 
     fig = None if plot else None # Matplotlib gui figure window
     update_f = lambda x: analyze_emissivity(x, vis, output)
