@@ -1,0 +1,73 @@
+patch.facecolor: gray
+patch.edgecolor: black
+
+axes.facecolor: white
+axes.edgecolor: black
+axes.labelcolor: black
+
+# Set color cycle: blue, green, yellow, red, violet, gray
+axes.prop_cycle: cycler('color', ['0.00', '0.40', '0.60', '0.70'])
+
+# Set default figure size
+figure.figsize : 7.5, 5.0
+
+# Set x axis
+xtick.direction : in
+xtick.major.size : 3
+xtick.major.width : 0.5
+xtick.minor.size : 1.5
+xtick.minor.width : 0.5
+xtick.minor.visible : True
+xtick.top : True
+xtick.color: black
+
+# Set y axis
+ytick.direction : in
+ytick.major.size : 3
+ytick.major.width : 0.5
+ytick.minor.size : 1.5
+ytick.minor.width : 0.5
+ytick.minor.visible : True
+ytick.right : True
+ytick.color: black
+
+grid.color:     black
+grid.linestyle: :
+grid.alpha:     0.2
+
+# Set line widths
+axes.linewidth : 0.5
+grid.linewidth : 0.25
+lines.linewidth : 1.
+
+lines.color: black
+
+# Remove legend frame
+legend.frameon : False
+
+# Always save as 'tight'
+savefig.bbox : tight
+savefig.pad_inches : 0.05
+
+# Use serif fonts
+font.serif : cmr10, Computer Modern Serif, DejaVu Serif
+font.family : serif
+axes.formatter.use_mathtext : True
+mathtext.fontset : cm
+
+text.color: black
+
+# Use LaTeX for math formatting
+text.usetex : True
+text.latex.preamble : \usepackage{amsmath} \usepackage{amssymb} \usepackage{siunitx}
+
+# figure.facecolor: white
+# figure.edgecolor: white
+
+image.cmap: gray
+
+# savefig.facecolor: white
+# savefig.edgecolor: white
+savefig.transparent: True
+
+
