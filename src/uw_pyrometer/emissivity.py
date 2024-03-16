@@ -49,7 +49,7 @@ class EmissivityVis(plt.Figure):
         self.fit.set_xdata(fit_x)
         self.fit.set_ydata(fit_y)
 
-        self.label.set_text(r' $ \SI{' f'{e:.3e}' r'}{} \sigma T^4 + \SI{' f'{1e6*bg:.3e}' r'}{\micro\watt} $')
+        self.label.set_text(r' $ \SI{' f'{e:.3f}' r'}{} \sigma T^4 + \SI{' f'{1e6*bg:.1f}' r'}{\micro\watt} $')
 
         self.ax.set_ylim([1e6*bg+e*x for x in self.ax.get_xlim()])
         # self.label.set_position((fit_x[65], e * fit_x[65] + 1e6*bg))
